@@ -2,14 +2,13 @@
 
 **Current release: 1.1.0-beta.1**
 
-FlexSpotMaster is a Windows companion utility for FlexRadio operators. It connects
+FlexSpotMaster is a Windows companion utility for Flex Radio operators. It connects
 directly to the FlexRadio TCP API and monitors your panadapter spots in real time.
-When you tune a slice to an exact spotted frequency, it identifies the callsign and
-optionally changes the slice mode.
+It offers custom spot text and background colors based upon configurable spot aging.  Depending on your DX Cluster source app, this can provide finer control over your spots.
 
-Windows SmartSDR already forwards spot/callsign data to Windows logger applications
-natively, so FlexSpotMaster focuses on the panadapter spot management side: duplicate
-removal, age-based coloring, and smart threshold control.
+Often, DX Clusters can report the same spot at slightly different frequencies, which can clutter up your panadapter.  FlexSpotMaster listens to your filter bandwidth, and any spot appearing inside that passband is considered a duplicate, and automatically removed.  This provides a simple, dynamic method to reduce panadapter spot clutter - especially handy during busy CW contests.  This automatic feature is defeatble, and can be set to a fixed "duplicate spot threshold" in Hz.
+
+Based upon my FlexSpotBrige for macOS, FlexSpotMaster for Windows focuses on panadapter spot management: auto duplicate removal, age-based coloring, and smart threshold control.
 
 ---
 
@@ -20,9 +19,10 @@ removal, age-based coloring, and smart threshold control.
 - Detects VFO frequency changes and matches against active spots
 - **Duplicate spot removal** — removes older spots within a configurable Hz window when a new spot arrives at the same frequency
 - **Optional Auto-Dupe Threshold** — automatically keeps the duplicate window in sync with the current Flex slice filter bandwidth, so the threshold is always exactly right for your current mode and filter setting
-- **Age-based spot coloring** — recolors spots on the panadapter based on configurable age thresholds (now / red / yellow buckets)
+- **Age-based spot coloring** — recolors spots on the panadapter based on three configurable age thresholds
 - **Background color support** — optionally also colorize the spot background on the panadapter
 - **Auto-clear old spots** — automatically removes spots older than a configurable number of minutes
+- Clear All Spots function
 - Live status bar showing Auto-Dupe state, current filter bandwidth, and active duplicate threshold
 - Preferences GUI with real-time color pickers and live spinbox preview
 
@@ -34,6 +34,7 @@ removal, age-based coloring, and smart threshold control.
 - Python 3.9 or later (or the standalone `.exe` built with PyInstaller)
 - A FlexRadio SDR on the same network
 - Windows SmartSDR (for radio operation; this tool connects to the radio API directly)
+- A DX Cluster source (typically a logger application)
 
 ---
 
