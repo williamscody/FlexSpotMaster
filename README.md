@@ -93,14 +93,55 @@ set to "None" to leave it at the FlexRadio default.
 
 ---
 
-## Building a Standalone Executable
+## Building a Standalone Windows Executable
+
+You can build a Windows `.exe` with either `py2exe` or `PyInstaller`.
+
+### Option A: py2exe
+
+1. Install build dependencies:
+
+```
+pip install py2exe Pillow
+```
+
+2. Create a file named `setup.py` in the project root:
+
+```python
+from distutils.core import setup
+import py2exe
+
+setup(
+	windows=[{"script": "FlexSpotMaster.py"}],
+	options={
+		"py2exe": {
+			"bundle_files": 1,
+			"compressed": True,
+			"optimize": 2,
+		}
+	},
+	zipfile=None,
+)
+```
+
+3. Build:
+
+```
+python setup.py py2exe
+```
+
+The executable will be created in the `dist/` folder.
+
+Note: If `py2exe` does not install cleanly for your Python version, use Option B (`PyInstaller`) below.
+
+### Option B: PyInstaller
 
 ```
 pip install pyinstaller
 pyinstaller --onefile --windowed FlexSpotMaster.py
 ```
 
-The resulting `FlexSpotMaster.exe` will be in the `dist/` folder.
+The executable will be in the `dist/` folder.
 
 ---
 
