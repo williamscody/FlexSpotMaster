@@ -4,11 +4,8 @@ FlexRadio Spot Master for Windows
 
 This script connects to a FlexRadio TCP control port (4992).
 
-It listens for spots already present on the Flex panadapter and
-when you tune a slice to an exact spotted frequency it:
-
-• prints the matched callsign
-• optionally sets the radio mode
+It listens for spots on the Flex panadapter and focuses on spot housekeeping:
+duplicate removal, age-based coloring, and optional auto-clear.
 
 Note: Windows SmartSDR already forwards spot/callsign information to
 Windows logger applications directly, so no additional logger integration
@@ -40,7 +37,6 @@ def app_version_label():
     return f"{APP_VERSION}-{APP_PRERELEASE}"
 
 
-current_freq = None
 CURRENT_FILTER_BANDWIDTH_HZ = None
 
 # ------------------------------------------------
@@ -52,9 +48,6 @@ FLEX_IP = "192.168.1.100"
 
 # Flex API port
 FLEX_PORT = 4992
-
-# If True, do not change slice mode when a spot is matched.
-KEEP_CURRENT_MODE = False
 
 # If True, remove older Flex spots that share the same exact frequency.
 REMOVE_DUPLICATE_SPOTS = True
@@ -167,29 +160,6 @@ def remove_duplicate_flex_spots(freq_hz, keep_spot_id, command_sock=None):
             print(f"Failed to remove Flex spot id={spot_id}: {e}")
 
 
-def find_exact_flex_spot_call(freq_hz):
-    """Return the newest callsign for an exact Flex spot frequency match."""
-    with flex_spots_lock:
-        candidates = [
-            (spot_id, spot)
-            for spot_id, spot in flex_spots.items()
-            if spot.get("freq_hz") == freq_hz and spot.get("call")
-        ]
-
-    if not candidates:
-        return None
-
-    # Prefer the highest numeric spot ID as the newest event.
-    def spot_sort_key(item):
-        spot_id, spot = item
-        try:
-            return int(spot_id)
-        except ValueError:
-            return int(spot.get("time", 0))
-
-    newest_id, newest_spot = max(candidates, key=spot_sort_key)
-    return newest_spot.get("call"), newest_id
-
 # ------------------------------------------------
 # SETTINGS PERSISTENCE
 # ------------------------------------------------
@@ -201,7 +171,7 @@ SETTINGS_DIR = os.path.join(
 SETTINGS_FILE = os.path.join(SETTINGS_DIR, "FlexSpotMaster.json")
 
 def load_settings():
-    global FLEX_IP, FLEX_PORT, KEEP_CURRENT_MODE, REMOVE_DUPLICATE_SPOTS, DUPLICATE_SPOT_THRESHOLD_HZ, VERBOSE_LOGGING, AUTO_CLEAR_SPOTS_ENABLED, AUTO_CLEAR_SPOTS_AGE_MINUTES
+    global FLEX_IP, FLEX_PORT, REMOVE_DUPLICATE_SPOTS, DUPLICATE_SPOT_THRESHOLD_HZ, VERBOSE_LOGGING, AUTO_CLEAR_SPOTS_ENABLED, AUTO_CLEAR_SPOTS_AGE_MINUTES
     global SPOT_AGE_RED_MINUTES, SPOT_AGE_YELLOW_MINUTES, SPOT_COLOR_NOW, SPOT_COLOR_RED, SPOT_COLOR_YELLOW
     global SPOT_BG_COLOR_NOW, SPOT_BG_COLOR_RED, SPOT_BG_COLOR_YELLOW
     global ENABLE_SPOT_TEXT_COLORS, ENABLE_SPOT_BACKGROUND_COLORS, ENABLE_AUTO_DUPE_THRESHOLD
@@ -211,7 +181,6 @@ def load_settings():
                 data = json.load(f)
             FLEX_IP = data.get("FLEX_IP", FLEX_IP)
             FLEX_PORT = int(data.get("FLEX_PORT", FLEX_PORT))
-            KEEP_CURRENT_MODE = bool(data.get("KEEP_CURRENT_MODE", KEEP_CURRENT_MODE))
             REMOVE_DUPLICATE_SPOTS = bool(data.get("REMOVE_DUPLICATE_SPOTS", REMOVE_DUPLICATE_SPOTS))
             DUPLICATE_SPOT_THRESHOLD_HZ = int(data.get("DUPLICATE_SPOT_THRESHOLD_HZ", DUPLICATE_SPOT_THRESHOLD_HZ))
             VERBOSE_LOGGING = bool(data.get("VERBOSE_LOGGING", VERBOSE_LOGGING))
@@ -260,7 +229,6 @@ def save_settings():
         data = {
             "FLEX_IP": FLEX_IP,
             "FLEX_PORT": FLEX_PORT,
-            "KEEP_CURRENT_MODE": KEEP_CURRENT_MODE,
             "REMOVE_DUPLICATE_SPOTS": REMOVE_DUPLICATE_SPOTS,
             "DUPLICATE_SPOT_THRESHOLD_HZ": DUPLICATE_SPOT_THRESHOLD_HZ,
             "VERBOSE_LOGGING": VERBOSE_LOGGING,
@@ -463,39 +431,11 @@ class TextRedirector:
 
 
 # ------------------------------------------------
-# FLEX MODE CONTROL
-# ------------------------------------------------
-
-def set_mode(sock, slice_id, mode):
-
-    cmd = f"C slice set {slice_id} mode={mode}\n"
-    sock.send(cmd.encode())
-
-
-# ------------------------------------------------
-# SIMPLE MODE DETECTION (example bands)
-# ------------------------------------------------
-
-def auto_mode(sock, slice_id, freq):
-
-    mhz = freq / 1e6
-
-    if 14.070 < mhz < 14.080:
-        set_mode(sock, slice_id, "DIGU")
-
-    elif 14.000 < mhz < 14.060:
-        set_mode(sock, slice_id, "CW")
-
-    elif 14.150 < mhz < 14.350:
-        set_mode(sock, slice_id, "USB")
-
-
-# ------------------------------------------------
 # FLEX RADIO LISTENER
 # ------------------------------------------------
 
 def flex_listener():
-    global current_freq, DUPLICATE_SPOT_THRESHOLD_HZ, CURRENT_FILTER_BANDWIDTH_HZ
+    global DUPLICATE_SPOT_THRESHOLD_HZ, CURRENT_FILTER_BANDWIDTH_HZ
 
     print("Connecting to Flex radio...")
 
@@ -578,29 +518,6 @@ def flex_listener():
                 if not freq_match:
                     continue
 
-                slice_id = slice_event_match.group(1)
-                freq_hz = int(round(float(freq_match.group(1)) * 1e6))
-
-                previous_freq = current_freq
-
-                # Only evaluate when the VFO actually changes frequency.
-                if previous_freq is None:
-                    log_debug("Initial frequency captured; waiting for next VFO change")
-                elif freq_hz != previous_freq:
-                    log_debug(f"VFO change detected: {previous_freq} -> {freq_hz}")
-
-                    match = find_exact_flex_spot_call(freq_hz)
-                    if match:
-                        call, match_spot_id = match
-                        print(f"Matched spot: {call} (id={match_spot_id}, freq={freq_hz} Hz)")
-
-                        if KEEP_CURRENT_MODE:
-                            print("Keep current mode is enabled; not changing mode")
-                        else:
-                            auto_mode(sock, slice_id, freq_hz)
-
-                current_freq = freq_hz
-
 
 class App:
     def __init__(self, root):
@@ -669,11 +586,9 @@ class App:
         def clear_spots():
             try:
                 send_flex_command("spot clear")
-                global current_freq
                 with flex_spots_lock:
                     removed_spots = len(flex_spots)
                     flex_spots.clear()
-                current_freq = None
                 print(f"All spots cleared on Flex panadapter. Local spot memory reset ({removed_spots} spots removed).")
             except Exception as e:
                 print(f"Failed to clear spots on Flex: {e}")
@@ -863,20 +778,12 @@ class App:
             entries[var_name] = entry
             row += 1
 
-        keep_current_mode_var = tk.BooleanVar(value=KEEP_CURRENT_MODE)
-        tk.Checkbutton(
-            settings_win,
-            text="Keep current mode",
-            variable=keep_current_mode_var
-        ).grid(row=row, column=0, columnspan=2, sticky="w", padx=8, pady=(6, 8))
-        row += 1
-
         remove_duplicate_spots_var = tk.BooleanVar(value=REMOVE_DUPLICATE_SPOTS)
         tk.Checkbutton(
             settings_win,
             text="Remove older spots at same frequency",
             variable=remove_duplicate_spots_var
-        ).grid(row=row, column=0, columnspan=2, sticky="w", padx=8, pady=(0, 8))
+        ).grid(row=row, column=0, columnspan=2, sticky="w", padx=8, pady=(6, 8))
         row += 1
 
         duplicate_threshold_var = tk.IntVar(value=DUPLICATE_SPOT_THRESHOLD_HZ)
@@ -1096,7 +1003,7 @@ class App:
         row += 1
 
         def save():
-            global KEEP_CURRENT_MODE, REMOVE_DUPLICATE_SPOTS, DUPLICATE_SPOT_THRESHOLD_HZ, VERBOSE_LOGGING, AUTO_CLEAR_SPOTS_ENABLED, AUTO_CLEAR_SPOTS_AGE_MINUTES
+            global REMOVE_DUPLICATE_SPOTS, DUPLICATE_SPOT_THRESHOLD_HZ, VERBOSE_LOGGING, AUTO_CLEAR_SPOTS_ENABLED, AUTO_CLEAR_SPOTS_AGE_MINUTES
             global SPOT_AGE_RED_MINUTES, SPOT_AGE_YELLOW_MINUTES, SPOT_COLOR_NOW, SPOT_COLOR_RED, SPOT_COLOR_YELLOW
             global SPOT_BG_COLOR_NOW, SPOT_BG_COLOR_RED, SPOT_BG_COLOR_YELLOW
             global ENABLE_SPOT_TEXT_COLORS, ENABLE_SPOT_BACKGROUND_COLORS, ENABLE_AUTO_DUPE_THRESHOLD
@@ -1127,7 +1034,6 @@ class App:
                 print("Duplicate threshold must be 0 Hz or greater")
                 return
 
-            KEEP_CURRENT_MODE = keep_current_mode_var.get()
             REMOVE_DUPLICATE_SPOTS = remove_duplicate_spots_var.get()
             ENABLE_AUTO_DUPE_THRESHOLD = enable_auto_dupe_threshold_var.get()
             if not ENABLE_AUTO_DUPE_THRESHOLD:

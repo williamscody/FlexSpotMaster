@@ -16,7 +16,6 @@ Based upon my FlexSpotBrige for macOS, FlexSpotMaster for Windows focuses on pan
 
 - Connects to FlexRadio TCP API (port 4992)
 - Monitors all panadapter spots (`sub spot all`)
-- Detects VFO frequency changes and matches against active spots
 - **Duplicate spot removal** — removes older spots within a configurable Hz window when a new spot arrives at the same frequency
 - **Optional Auto-Dupe Threshold** — automatically keeps the duplicate window in sync with the current Flex slice filter bandwidth, so the threshold is always exactly right for your current mode and filter setting
 - **Age-based spot coloring** — recolors spots on the panadapter based on three configurable age thresholds
@@ -60,7 +59,6 @@ Settings are saved automatically to `%APPDATA%\FlexSpotMaster\FlexSpotMaster.jso
 |---|---|
 | FLEX_IP | IP address of your FlexRadio |
 | FLEX_PORT | TCP port (default 4992) |
-| Keep current mode | Do not change slice mode on spot match |
 | Remove older spots at same frequency | Enable duplicate spot removal |
 | Duplicate threshold | Hz window used for duplicate detection |
 | **Enable Auto-Dupe Threshold** | Mirror the current Flex filter bandwidth as the duplicate threshold |
